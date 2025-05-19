@@ -1,2 +1,5 @@
 *.pkl filter=lfs diff=lfs merge=lfs -text
 *.index filter=lfs diff=lfs merge=lfs -text
+*.h5 filter=lfs diff=lfs merge=lfs -text
+embeddings.pkl filter=lfs diff=lfs merge=lfs -text
+processed_lines.pkl filter=lfs diff=lfs merge=lfs -text
