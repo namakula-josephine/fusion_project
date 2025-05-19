@@ -14,6 +14,7 @@ import shutil
 from datetime import datetime
 from typing import List, Optional, Dict
 import uuid
+from passlib.context import CryptContext
 
 # Load environment variables
 load_dotenv('secrets.env')
@@ -76,8 +77,13 @@ class_names = ['Early Blight', 'Healthy', 'Late Blight']
 # Authentication functions
 def authenticate_user(username: str, password: str):
     user = users_db.get(username)
-    if not user or user.password != password:
+    if not user:
         return None
+    
+    # Verify the password against the stored hash
+    if not pwd_context.verify(password, user['password']):
+        return None
+        
     return user
 
 async def get_current_user(request: Request):
@@ -113,36 +119,71 @@ def predict_image(image_path):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
+# Password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 # Auth endpoints
+@app.post("/register")
 @app.post("/api/register")
 async def register_user(
     username: str = Form(...),
     password: str = Form(...),
     email: str = Form(...)
 ):
+    """Register a new user"""
+    print(f"Registration attempt: {username}, {email}")
+    # Check if user already exists
     if username in users_db:
+        print(f"Registration failed - user {username} already exists")
         raise HTTPException(status_code=400, detail="Username already registered")
     
-    users_db[username] = User(
-        username=username,
-        password=password,
-        email=email
-    )
+    # Hash the password
+    hashed_password = pwd_context.hash(password)
+    
+    # Store the hashed password
+    users_db[username] = {
+        "username": username,
+        "password": hashed_password,
+        "email": email
+    }
+    
+    print(f"Registration successful for {username}")
+    # Return success response
     return {"message": "Registration successful"}
 
 @app.post("/api/login")
 async def login(username: str = Form(...), password: str = Form(...)):
-    user = authenticate_user(username, password)
-    if not user:
+    print(f"Login attempt for user: {username}")
+    
+    # Debug: Check if user exists
+    if username not in users_db:
+        print(f"User {username} not found in database")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password"
         )
+    
+    # Debug: Print stored user data (except password)
+    user_data = users_db.get(username).copy()
+    if 'password' in user_data:
+        user_data['password'] = '***REDACTED***'
+    print(f"User data found: {user_data}")
+    
+    user = authenticate_user(username, password)
+    if not user:
+        print("Authentication failed: password doesn't match")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password"
+        )
+    
     session_id = str(uuid.uuid4())
-    active_sessions[session_id] = user.username
+    active_sessions[session_id] = username  # Store username instead of user object
+    
+    print(f"Login successful, session created: {session_id}")
     return {
         "session_id": session_id,
-        "username": user.username,
+        "username": username,
         "message": "Login successful"
     }
 
@@ -409,6 +450,53 @@ async def get_messages(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def catch_all(request: Request, path_name: str):
+    try:
+        body = None
+        try:
+            body = await request.body()
+        except:
+            body = "Could not read body"
+            
+        headers = dict(request.headers)
+        client_host = request.client.host if request.client else "unknown"
+        method = request.method
+        url = request.url.path
+        query_params = dict(request.query_params)
+        
+        print(f"\n==== DEBUG 404 REQUEST ====")
+        print(f"Method: {method}")
+        print(f"URL: {url}")
+        print(f"Client: {client_host}")
+        print(f"Headers: {json.dumps(headers, indent=2)}")
+        print(f"Query Params: {json.dumps(query_params, indent=2)}")
+        print(f"Body: {body}")
+        print(f"==========================\n")
+        
+        return JSONResponse(
+            status_code=404,
+            content={"detail": f"Endpoint not found: {method} {url}"}
+        )
+    except Exception as e:
+        print(f"Error in catch-all handler: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Internal server error in catch-all handler"}
+        )
+
+@app.get("/api/debug/users")
+async def debug_users():
+    """DEBUG ONLY: View registered users (remove in production)"""
+    sanitized_users = {}
+    for username, user_data in users_db.items():
+        sanitized_users[username] = {
+            "username": user_data.get("username", ""),
+            "email": user_data.get("email", ""),
+            "has_password": bool(user_data.get("password"))
+        }
+    return {"user_count": len(users_db), "users": sanitized_users}
 
 if __name__ == "__main__":
     import uvicorn
