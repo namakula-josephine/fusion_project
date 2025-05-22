@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from dotenv import load_dotenv
 import os
 import shutil
@@ -14,6 +14,8 @@ from PIL import Image
 import numpy as np
 from tensorflow.keras.models import load_model
 from auth_utils import load_users_db, save_users_db, hash_password, verify_password
+from backend.models import Chat, ChatCreate, ChatUpdate, ChatResponse
+from backend.chat_storage import ChatStorage
 
 load_dotenv('secrets.env')
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -51,6 +53,9 @@ try:
 except Exception as e:
     print(f"Error loading model: {e}")
     vision_model = None
+
+# Initialize chat storage
+chat_storage = ChatStorage()
 
 def authenticate_user(credentials: HTTPBasicCredentials = Depends(security)):
     user = users_db.get(credentials.username)
@@ -97,10 +102,76 @@ async def get_current_user_info(current_user: dict = Depends(authenticate_user))
         "email": current_user["email"]
     }
 
-@app.post("/api/query")
+@app.post("/api/chats/", response_model=ChatResponse)
+async def create_chat(
+    chat_data: ChatCreate,
+    current_user: dict = Depends(authenticate_user)
+):
+    chat = chat_storage.create_chat(current_user["username"], chat_data.title)
+    return ChatResponse(
+        chat_id=chat.chat_id,
+        title=chat.title,
+        created_at=chat.created_at,
+        message_count=len(chat.messages),
+        last_message=chat.messages[-1].content if chat.messages else None
+    )
+
+@app.get("/api/chats/", response_model=List[ChatResponse])
+async def get_chats(current_user: dict = Depends(authenticate_user)):
+    chats = chat_storage.get_user_chats(current_user["username"])
+    return [
+        ChatResponse(
+            chat_id=chat.chat_id,
+            title=chat.title,
+            created_at=chat.created_at,
+            message_count=len(chat.messages),
+            last_message=chat.messages[-1].content if chat.messages else None
+        )
+        for chat in chats
+    ]
+
+@app.get("/api/chats/{chat_id}", response_model=Chat)
+async def get_chat(
+    chat_id: str,
+    current_user: dict = Depends(authenticate_user)
+):
+    chat = chat_storage.get_chat(current_user["username"], chat_id)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return chat
+
+@app.put("/api/chats/{chat_id}", response_model=ChatResponse)
+async def update_chat(
+    chat_id: str,
+    chat_data: ChatUpdate,
+    current_user: dict = Depends(authenticate_user)
+):
+    chat = chat_storage.update_chat(current_user["username"], chat_id, chat_data.title)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return ChatResponse(
+        chat_id=chat.chat_id,
+        title=chat.title,
+        created_at=chat.created_at,
+        message_count=len(chat.messages),
+        last_message=chat.messages[-1].content if chat.messages else None
+    )
+
+@app.delete("/api/chats/{chat_id}")
+async def delete_chat(
+    chat_id: str,
+    current_user: dict = Depends(authenticate_user)
+):
+    if not chat_storage.delete_chat(current_user["username"], chat_id):
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return {"status": "success"}
+
+# Update the query endpoint to support chat_id
+@app.post("/api/query", response_model=QueryResponse)
 async def query(
     question: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
+    chat_id: Optional[str] = Form(None),
     current_user: dict = Depends(authenticate_user)
 ):
     try:
@@ -110,6 +181,7 @@ async def query(
                 detail="No question or image provided"
             )
 
+        # Process image if provided
         if image:
             print(f"Processing image: {image.filename}")
             
@@ -143,6 +215,11 @@ async def query(
                 )
                 explanation = await get_ai_response(query_text)
                 
+                # Save to chat if chat_id provided
+                if chat_id:
+                    chat_storage.add_message(current_user["username"], chat_id, "user", f"Uploaded image: {image.filename}")
+                    chat_storage.add_message(current_user["username"], chat_id, "assistant", explanation)
+                
                 return {
                     "answer": explanation,
                     "result": {
@@ -165,6 +242,12 @@ async def query(
         else:
             print(f"Processing text query: {question}")
             answer = await get_ai_response(question)
+            
+            # Save to chat if chat_id provided
+            if chat_id:
+                chat_storage.add_message(current_user["username"], chat_id, "user", question)
+                chat_storage.add_message(current_user["username"], chat_id, "assistant", answer)
+            
             return {"answer": answer}
             
     except HTTPException:
