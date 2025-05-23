@@ -35,12 +35,6 @@ secrets.env
 temp/
 uploads/
 
-# Model files
-*.h5
-*.index
-embeddings.pkl
-processed_lines.pkl
-
 # Database
 *.db
 
