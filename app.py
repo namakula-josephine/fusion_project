@@ -26,7 +26,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8081"],  # Your React app's URL
+    allow_origins=["http://localhost:3000"],  # Your React app's URL
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],  # Allow all headers for flexibility
@@ -44,6 +44,11 @@ class User(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     result: Optional[Dict] = None
+
+class MessageCreate(BaseModel):
+    role: str
+    content: str
+    result: Optional[dict] = None
 
 users_db = load_users_db()
 
@@ -214,19 +219,50 @@ async def query(
                     "and suggest specific treatment options."
                 )
                 explanation = await get_ai_response(query_text)
+
+                # Get treatment plans separately
+                treatment_query = f"What are the specific treatment plans for a potato plant with {predicted_class}?"
+                treatment_plans = await get_ai_response(treatment_query)
                 
                 # Save to chat if chat_id provided
                 if chat_id:
-                    chat_storage.add_message(current_user["username"], chat_id, "user", f"Uploaded image: {image.filename}")
-                    chat_storage.add_message(current_user["username"], chat_id, "assistant", explanation)
+                    chat_storage.add_message(
+                        current_user["username"],
+                        chat_id,
+                        "user",
+                        f"Uploaded image: {image.filename}"
+                    )
+                    chat_storage.add_message(
+                        current_user["username"],
+                        chat_id,
+                        "assistant",
+                        explanation,
+                        result={
+                            "predicted_class": predicted_class,
+                            "confidence": f"{confidence:.2%}",
+                            "explanation": explanation,
+                            "treatment_plans": treatment_plans
+                        }
+                    )
                 
-                return {
+                response_data = {
                     "answer": explanation,
                     "result": {
                         "predicted_class": predicted_class,
-                        "confidence": f"{confidence:.2%}"
+                        "confidence": f"{confidence:.2%}",
+                        "explanation": explanation,
+                        "treatment_plans": treatment_plans
                     }
                 }
+                
+                return JSONResponse(
+                    content=response_data,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Access-Control-Allow-Origin": "http://localhost:3000",
+                        "Access-Control-Allow-Credentials": "true"
+                    }
+                )
             
             except Exception as e:
                 print(f"Image processing error: {str(e)}")
@@ -248,7 +284,15 @@ async def query(
                 chat_storage.add_message(current_user["username"], chat_id, "user", question)
                 chat_storage.add_message(current_user["username"], chat_id, "assistant", answer)
             
-            return {"answer": answer}
+            response_data = {"answer": answer}
+            return JSONResponse(
+                content=response_data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "http://localhost:3000",
+                    "Access-Control-Allow-Credentials": "true"
+                }
+            )
             
     except HTTPException:
         raise
@@ -258,6 +302,23 @@ async def query(
             status_code=500,
             detail=f"An unexpected error occurred: {str(e)}"
         )
+
+@app.post("/api/chats/{chat_id}/messages", response_model=Chat)
+async def add_chat_message(
+    chat_id: str,
+    message: MessageCreate,
+    current_user: dict = Depends(authenticate_user)
+):
+    chat = chat_storage.add_message(
+        username=current_user["username"],
+        chat_id=chat_id,
+        role=message.role,
+        content=message.content,
+        result=message.result
+    )
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return chat
 
 def preprocess_image(image_path, img_size=(224, 224)):
     

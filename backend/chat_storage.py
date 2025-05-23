@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime
 from typing import Dict, List, Optional
-from backend.models import Chat, Message
+from backend.models import Chat, Message, MessageResult
 
 class ChatStorage:
     def __init__(self, data_dir: str = "data/chats"):
@@ -66,12 +66,16 @@ class ChatStorage:
         self._save_user_chats(username, chats)
         return True
     
-    def add_message(self, username: str, chat_id: str, role: str, content: str) -> Optional[Chat]:
+    def add_message(self, username: str, chat_id: str, role: str, content: str, result: Optional[dict] = None) -> Optional[Chat]:
         chats = self._load_user_chats(username)
         if chat_id not in chats:
             return None
             
-        message = Message(role=role, content=content)
+        message = Message(
+            role=role, 
+            content=content,
+            result=MessageResult(**result) if result else None
+        )
         chats[chat_id].messages.append(message)
         self._save_user_chats(username, chats)
         return chats[chat_id]
