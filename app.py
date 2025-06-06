@@ -31,7 +31,11 @@ if openai_api_key:
         openai.api_key = openai_api_key
         openai_client = openai
         print("Using OpenAI v0.27.x client")
-        print(f"OpenAI version: {openai.__version__}")
+        # Check if version is available, some versions don't have __version__
+        try:
+            print(f"OpenAI version: {openai.__version__}")
+        except AttributeError:
+            print("OpenAI version: Unable to detect version")
     except ImportError:
         print("Error: OpenAI library not found")
         openai_client = None
@@ -42,7 +46,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Your React app's URL
+    allow_origins=[
+        "http://localhost:8081",  # React app
+        "http://localhost:8080",  # Vite dev server
+        "http://localhost:5173",  # Another common Vite port
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],  # Allow all headers for flexibility
