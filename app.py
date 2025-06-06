@@ -54,7 +54,27 @@ users_db = load_users_db()
 
 try:
     # Try to load the model with custom objects handling
-    vision_model = load_model('model/potato_classification_model.h5', compile=False)
+    from tensorflow.keras.models import load_model
+    import tensorflow as tf
+    
+    # Try different loading strategies
+    try:
+        vision_model = load_model('model/potato_classification_model.h5', compile=False)
+    except Exception as e1:
+        print(f"First load attempt failed: {e1}")
+        try:
+            # Try with custom objects
+            vision_model = tf.keras.models.load_model('model/potato_classification_model.h5', compile=False)
+        except Exception as e2:
+            print(f"Second load attempt failed: {e2}")
+            # Try loading without InputLayer issues
+            try:
+                # Load model architecture and weights separately if needed
+                vision_model = load_model('model/potato_classification_model.h5', compile=False, custom_objects={'InputLayer': tf.keras.layers.InputLayer})
+            except Exception as e3:
+                print(f"Third load attempt failed: {e3}")
+                raise e3
+    
     class_names = ['Early Blight', 'Healthy', 'Late Blight']
     print("Model loaded successfully")
 except Exception as e:

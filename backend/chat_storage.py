@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime
 from typing import Dict, List, Optional
-from backend.models import Chat, Message, MessageResult, MessageResult
+from backend.models import Chat, Message, MessageResult
 
 class ChatStorage:
     def __init__(self, data_dir: str = "data/chats"):
