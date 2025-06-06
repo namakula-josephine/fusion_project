@@ -53,11 +53,15 @@ class MessageCreate(BaseModel):
 users_db = load_users_db()
 
 try:
-    vision_model = load_model('model/potato_classification_model.h5')
+    # Try to load the model with custom objects handling
+    vision_model = load_model('model/potato_classification_model.h5', compile=False)
     class_names = ['Early Blight', 'Healthy', 'Late Blight']
+    print("Model loaded successfully")
 except Exception as e:
     print(f"Error loading model: {e}")
+    print("Vision model will be unavailable - image analysis disabled")
     vision_model = None
+    class_names = ['Early Blight', 'Healthy', 'Late Blight']
 
 # Initialize chat storage
 chat_storage = ChatStorage()
@@ -335,7 +339,11 @@ async def get_ai_response(query: str) -> str:
         )
         
     try:
-        response = await openai.ChatCompletion.acreate(
+        # Use the modern OpenAI client
+        from openai import OpenAI
+        client = OpenAI(api_key=openai.api_key)
+        
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {
