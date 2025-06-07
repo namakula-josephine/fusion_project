@@ -71,4 +71,5 @@ python-dotenv
 tensorflow==2.15.0
 passlib[bcrypt]
 scikit-learn==1.5.2
+h5py==3.11.0
 
