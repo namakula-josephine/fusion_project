@@ -264,24 +264,22 @@ async def query(
                 confidence = float(np.max(prediction))
                 print(f"Prediction: {predicted_class} ({confidence:.2%})")
                 
-                # Create a brief, clean summary for the main answer (no AI content)
-                summary = f"Image analysis complete. Diagnosis: **{predicted_class}** ({confidence:.2%} confidence)"
+                # Create a brief, clean summary for the main answer (no duplication)
+                summary = f"Image analysis complete. See detailed results below."
                 
-                # Get ONLY explanation about what the condition is - no treatment info
+                # Get detailed explanation about the diagnosis
                 explanation_query = (
-                    f"Explain what {predicted_class} is in potato plants. "
-                    f"Cover: what causes this condition, key symptoms to look for, and how it affects plant health. "
-                    f"Be concise and factual. DO NOT include any treatment recommendations. "
-                    f"Use **bold** for key terms and bullet points for symptoms."
+                    f"Provide a detailed explanation of {predicted_class} in potato plants. "
+                    f"Cover what this condition is, what causes it, typical symptoms, and how it affects the plant. "
+                    f"Keep it informative and well-structured with proper formatting."
                 )
                 explanation = await get_ai_response(explanation_query)
 
-                # Get ONLY treatment plans - no explanation of the condition
+                # Get comprehensive treatment plans
                 treatment_query = (
-                    f"Provide treatment options for {predicted_class} in potato plants. "
-                    f"Include: immediate actions, preventive measures, chemical treatments, and long-term management. "
-                    f"Format with clear bullet points. DO NOT explain what the condition is - focus only on solutions. "
-                    f"Use **bold** for important treatment categories."
+                    f"Provide a comprehensive treatment plan for {predicted_class} in potato plants. "
+                    f"Include immediate actions, preventive measures, chemical treatments if needed, and long-term management strategies. "
+                    f"Format with clear bullet points and actionable steps."
                 )
                 treatment_plans = await get_ai_response(treatment_query)
                 
