@@ -90,29 +90,30 @@ try:
     from tensorflow.keras.models import load_model
     import tensorflow as tf
     
-    # Try different loading strategies
-    try:
-        vision_model = load_model('model/potato_classification_model.h5', compile=False)
-    except Exception as e1:
-        print(f"First load attempt failed: {e1}")
+    # Ensure model directory exists
+    model_path = 'model/potato_classification_model.h5'
+    if not os.path.exists(model_path):
+        print(f"Model file not found at: {model_path}")
+        vision_model = None
+    else:
         try:
-            # Try with custom objects
-            vision_model = tf.keras.models.load_model('model/potato_classification_model.h5', compile=False)
-        except Exception as e2:
-            print(f"Second load attempt failed: {e2}")
-            # Try loading without InputLayer issues
+            # Try loading with minimal configuration
+            vision_model = tf.keras.models.load_model(model_path, compile=False)
+            print("Model loaded successfully")
+        except Exception as e1:
+            print(f"Model loading failed: {e1}")
             try:
-                # Load model architecture and weights separately if needed
-                vision_model = load_model('model/potato_classification_model.h5', compile=False, custom_objects={'InputLayer': tf.keras.layers.InputLayer})
-            except Exception as e3:
-                print(f"Third load attempt failed: {e3}")
-                raise e3
+                # Alternative loading method
+                vision_model = load_model(model_path, compile=False)
+                print("Model loaded with alternative method")
+            except Exception as e2:
+                print(f"Alternative loading also failed: {e2}")
+                vision_model = None
     
     class_names = ['Early Blight', 'Healthy', 'Late Blight']
-    print("Model loaded successfully")
+    
 except Exception as e:
-    print(f"Error loading model: {e}")
-    print("Vision model will be unavailable - image analysis disabled")
+    print(f"Critical error during model initialization: {e}")
     vision_model = None
     class_names = ['Early Blight', 'Healthy', 'Late Blight']
 
@@ -248,68 +249,96 @@ async def query(
             print(f"Processing image: {image.filename}")
             
             if not vision_model:
+                print("Vision model not available - returning error")
                 raise HTTPException(
                     status_code=500,
-                    detail="Vision model not available"
+                    detail="Vision model not available. The model may not have loaded properly during startup."
                 )
             
             try:
                 os.makedirs('temp', exist_ok=True)
                 image_path = f"temp/{image.filename}"
                 
+                # Validate image file
+                if not image.content_type or not image.content_type.startswith('image/'):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid image file type"
+                    )
+                
                 with open(image_path, "wb") as buffer:
                     shutil.copyfileobj(image.file, buffer)
                 print(f"Image saved to: {image_path}")
                 
+                # Verify file was saved correctly
+                if not os.path.exists(image_path) or os.path.getsize(image_path) == 0:
+                    raise ValueError("Failed to save image file")
+                
                 image_array = preprocess_image(image_path)
                 if image_array is None:
                     raise ValueError("Failed to preprocess image")
-                    
-                prediction = vision_model.predict(image_array, verbose=0)
-                predicted_class = class_names[np.argmax(prediction)]
-                confidence = float(np.max(prediction))
-                print(f"Prediction: {predicted_class} ({confidence:.2%})")
                 
-                # Create a brief, clean summary for the main answer (no duplication)
+                print(f"Image array shape: {image_array.shape}")
+                
+                try:
+                    prediction = vision_model.predict(image_array, verbose=0)
+                    predicted_class = class_names[np.argmax(prediction)]
+                    confidence = float(np.max(prediction))
+                    print(f"Prediction: {predicted_class} ({confidence:.2%})")
+                except Exception as pred_error:
+                    print(f"Prediction error: {pred_error}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Model prediction failed: {str(pred_error)}"
+                    )
+                
+                # Create a brief, clean summary for the main answer
                 summary = f"Image analysis complete. See detailed results below."
                 
-                # Get detailed explanation about the diagnosis
-                explanation_query = (
-                    f"Provide a detailed explanation of {predicted_class} in potato plants. "
-                    f"Cover what this condition is, what causes it, typical symptoms, and how it affects the plant. "
-                    f"Keep it informative and well-structured with proper formatting."
-                )
-                explanation = await get_ai_response(explanation_query)
+                # Get AI responses with error handling
+                try:
+                    explanation_query = (
+                        f"Provide a detailed explanation of {predicted_class} in potato plants. "
+                        f"Cover what this condition is, what causes it, typical symptoms, and how it affects the plant. "
+                        f"Keep it informative and well-structured with proper formatting."
+                    )
+                    explanation = await get_ai_response(explanation_query)
 
-                # Get comprehensive treatment plans
-                treatment_query = (
-                    f"Provide a comprehensive treatment plan for {predicted_class} in potato plants. "
-                    f"Include immediate actions, preventive measures, chemical treatments if needed, and long-term management strategies. "
-                    f"Format with clear bullet points and actionable steps."
-                )
-                treatment_plans = await get_ai_response(treatment_query)
+                    treatment_query = (
+                        f"Provide a comprehensive treatment plan for {predicted_class} in potato plants. "
+                        f"Include immediate actions, preventive measures, chemical treatments if needed, and long-term management strategies. "
+                        f"Format with clear bullet points and actionable steps."
+                    )
+                    treatment_plans = await get_ai_response(treatment_query)
+                except Exception as ai_error:
+                    print(f"AI response error: {ai_error}")
+                    explanation = f"**{predicted_class}** detected with {confidence:.1%} confidence. AI explanation service temporarily unavailable."
+                    treatment_plans = "Treatment recommendations temporarily unavailable. Please consult with an agricultural expert."
                 
                 # Save to chat if chat_id provided
                 if chat_id:
-                    # Save user message with just the image filename, no extra text
-                    chat_storage.add_message(
-                        current_user["username"],
-                        chat_id,
-                        "user",
-                        f"Uploaded image: {image.filename}"
-                    )
-                    chat_storage.add_message(
-                        current_user["username"],
-                        chat_id,
-                        "assistant",
-                        summary,
-                        result={
-                            "predicted_class": predicted_class,
-                            "confidence": f"{confidence:.2%}",
-                            "explanation": explanation,
-                            "treatment_plans": treatment_plans
-                        }
-                    )
+                    try:
+                        chat_storage.add_message(
+                            current_user["username"],
+                            chat_id,
+                            "user",
+                            f"Uploaded image: {image.filename}"
+                        )
+                        chat_storage.add_message(
+                            current_user["username"],
+                            chat_id,
+                            "assistant",
+                            summary,
+                            result={
+                                "predicted_class": predicted_class,
+                                "confidence": f"{confidence:.2%}",
+                                "explanation": explanation,
+                                "treatment_plans": treatment_plans
+                            }
+                        )
+                    except Exception as chat_error:
+                        print(f"Chat storage error: {chat_error}")
+                        # Continue without saving to chat
                 
                 response_data = {
                     "answer": summary,
@@ -330,16 +359,24 @@ async def query(
                     }
                 )
             
+            except HTTPException:
+                raise
             except Exception as e:
                 print(f"Image processing error: {str(e)}")
+                import traceback
+                print(f"Full traceback: {traceback.format_exc()}")
                 raise HTTPException(
                     status_code=500,
                     detail=f"Image processing failed: {str(e)}"
                 )
             finally:
-                if os.path.exists(image_path):
-                    os.remove(image_path)
-                    print(f"Cleaned up temporary file: {image_path}")
+                # Clean up temporary file
+                try:
+                    if 'image_path' in locals() and os.path.exists(image_path):
+                        os.remove(image_path)
+                        print(f"Cleaned up temporary file: {image_path}")
+                except Exception as cleanup_error:
+                    print(f"Failed to clean up temp file: {cleanup_error}")
         
         else:
             print(f"Processing text query: {question}")
@@ -387,11 +424,14 @@ async def add_chat_message(
     return chat
 
 def preprocess_image(image_path, img_size=(224, 224)):
-    
-    with Image.open(image_path) as img:
-        image = img.convert('RGB').resize(img_size)
-        image = np.array(image) / 255.0
-        return np.expand_dims(image, axis=0)
+    try:
+        with Image.open(image_path) as img:
+            image = img.convert('RGB').resize(img_size)
+            image = np.array(image) / 255.0
+            return np.expand_dims(image, axis=0)
+    except Exception as e:
+        print(f"Image preprocessing error: {e}")
+        return None
 
 async def get_ai_response(query: str) -> str:
     if not openai_client:
