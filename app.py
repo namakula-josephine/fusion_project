@@ -264,19 +264,30 @@ async def query(
                 confidence = float(np.max(prediction))
                 print(f"Prediction: {predicted_class} ({confidence:.2%})")
                 
-                query_text = (
-                    f"The model predicts this potato plant has {predicted_class} "
-                    f"with {confidence:.2%} confidence. Please explain what this means "
-                    "and suggest specific treatment options."
+                # Create a brief, clean summary for the main answer (no AI content)
+                summary = f"Image analysis complete. Diagnosis: **{predicted_class}** ({confidence:.2%} confidence)"
+                
+                # Get ONLY explanation about what the condition is - no treatment info
+                explanation_query = (
+                    f"Explain what {predicted_class} is in potato plants. "
+                    f"Cover: what causes this condition, key symptoms to look for, and how it affects plant health. "
+                    f"Be concise and factual. DO NOT include any treatment recommendations. "
+                    f"Use **bold** for key terms and bullet points for symptoms."
                 )
-                explanation = await get_ai_response(query_text)
+                explanation = await get_ai_response(explanation_query)
 
-                # Get treatment plans separately
-                treatment_query = f"What are the specific treatment plans for a potato plant with {predicted_class}?"
+                # Get ONLY treatment plans - no explanation of the condition
+                treatment_query = (
+                    f"Provide treatment options for {predicted_class} in potato plants. "
+                    f"Include: immediate actions, preventive measures, chemical treatments, and long-term management. "
+                    f"Format with clear bullet points. DO NOT explain what the condition is - focus only on solutions. "
+                    f"Use **bold** for important treatment categories."
+                )
                 treatment_plans = await get_ai_response(treatment_query)
                 
                 # Save to chat if chat_id provided
                 if chat_id:
+                    # Save user message with just the image filename, no extra text
                     chat_storage.add_message(
                         current_user["username"],
                         chat_id,
@@ -287,7 +298,7 @@ async def query(
                         current_user["username"],
                         chat_id,
                         "assistant",
-                        explanation,
+                        summary,
                         result={
                             "predicted_class": predicted_class,
                             "confidence": f"{confidence:.2%}",
@@ -297,7 +308,7 @@ async def query(
                     )
                 
                 response_data = {
-                    "answer": explanation,
+                    "answer": summary,
                     "result": {
                         "predicted_class": predicted_class,
                         "confidence": f"{confidence:.2%}",
@@ -392,11 +403,20 @@ async def get_ai_response(query: str) -> str:
             messages=[
                 {
                     "role": "system", 
-                    "content": "You are a helpful assistant specializing in potato plant diseases and agricultural advice. Provide clear, practical information about plant health, disease identification, and treatment recommendations."
+                    "content": """You are a helpful assistant specializing in potato plant diseases and agricultural advice. 
+
+FORMATTING GUIDELINES:
+- Use **bold text** for important terms, disease names, and key points
+- Use bullet points (-) for lists of symptoms, treatments, or recommendations
+- Organize your response with clear paragraphs
+- Use *italic text* for scientific names or emphasis
+- Structure your responses with clear sections when applicable
+
+Provide clear, practical information about plant health, disease identification, and treatment recommendations. Always format your responses to be easy to read and well-structured."""
                 },
                 {"role": "user", "content": query}
             ],
-            max_tokens=500,
+            max_tokens=800,  # Increased to allow for more detailed formatted responses
             temperature=0.7
         )
         return response.choices[0].message.content.strip()
