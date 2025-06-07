@@ -53,6 +53,12 @@ app.add_middleware(
         "http://172.24.176.1:8081",  # Frontend running on network IP
         "http://172.24.176.1:8080",  # Alternative ports
         "http://172.24.176.1:5173",
+        # Production frontend URL
+        "https://potato-disease-clinic.onrender.com",  # Your actual frontend deployment
+        # Other common deployment URLs (fallback)
+        "https://potato-plant-aid-dashboard.vercel.app",  # Vercel deployment
+        "https://potato-plant-aid-dashboard.netlify.app",  # Netlify deployment
+        "https://potato-plant-aid-dashboard.onrender.com",  # Render deployment
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
@@ -319,7 +325,7 @@ async def query(
                     content=response_data,
                     headers={
                         "Content-Type": "application/json",
-                        "Access-Control-Allow-Origin": "http://localhost:3000",
+                        "Access-Control-Allow-Origin": "*",
                         "Access-Control-Allow-Credentials": "true"
                     }
                 )
@@ -349,7 +355,7 @@ async def query(
                 content=response_data,
                 headers={
                     "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "http://localhost:3000",
+                    "Access-Control-Allow-Origin": "*",
                     "Access-Control-Allow-Credentials": "true"
                 }
             )
