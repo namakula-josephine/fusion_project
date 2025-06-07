@@ -50,6 +50,9 @@ app.add_middleware(
         "http://localhost:8081",  # React app
         "http://localhost:8080",  # Vite dev server
         "http://localhost:5173",  # Another common Vite port
+        "http://172.24.176.1:8081",  # Frontend running on network IP
+        "http://172.24.176.1:8080",  # Alternative ports
+        "http://172.24.176.1:5173",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
