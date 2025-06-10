@@ -11,19 +11,34 @@
 # const apiService = {
 #   baseUrl: process.env.REACT_APP_API_URL || 'http://localhost:8000',
 
+#   // Get authentication headers
+#   getAuthHeaders() {
+#     const token = localStorage.getItem('token');
+#     return token ? { 'Authorization': `Bearer ${token}` } : {};
+#   },
+
 #   // Method to handle text queries
 #   async sendTextQuery(question, sessionId) {
 #     try {
 #       const formData = new FormData();
 #       formData.append('question', question);
-#       formData.append('session_id', sessionId);
+#       if (sessionId) {
+#         formData.append('session_id', sessionId);
+#       }
 
-#       const response = await fetch(`${this.baseUrl}/query`, {
+#       const response = await fetch(`${this.baseUrl}/api/query`, {
 #         method: 'POST',
 #         body: formData,
+#         headers: {
+#           ...this.getAuthHeaders(),
+#           // Don't set Content-Type for FormData, let browser set it
+#         }
 #       });
 
 #       if (!response.ok) {
+#         if (response.status === 401) {
+#           throw new Error('Authentication required. Please log in.');
+#         }
 #         const errorText = await response.text();
 #         throw new Error(`Error: ${response.status} - ${errorText}`);
 #       }
@@ -40,14 +55,23 @@
 #     try {
 #       const formData = new FormData();
 #       formData.append('image', imageFile);
-#       formData.append('session_id', sessionId);
+#       if (sessionId) {
+#         formData.append('session_id', sessionId);
+#       }
 
-#       const response = await fetch(`${this.baseUrl}/query`, {
+#       const response = await fetch(`${this.baseUrl}/api/query`, {
 #         method: 'POST',
 #         body: formData,
+#         headers: {
+#           ...this.getAuthHeaders(),
+#           // Don't set Content-Type for FormData, let browser set it
+#         }
 #       });
 
 #       if (!response.ok) {
+#         if (response.status === 401) {
+#           throw new Error('Authentication required. Please log in.');
+#         }
 #         const errorText = await response.text();
 #         throw new Error(`Error: ${response.status} - ${errorText}`);
 #       }

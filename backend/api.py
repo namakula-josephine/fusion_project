@@ -147,4 +147,7 @@ def analyze_image():
     pass  # Placeholder for analyze_image code
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8000)
+    print("WARNING: This Flask app conflicts with the main FastAPI app.")
+    print("Use 'python app.py' to run the main application instead.")
+    print("If you need to run this for testing, modify the port.")
+    # app.run(debug=True, port=5003)  # Use different port if needed

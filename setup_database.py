@@ -58,7 +58,10 @@ def query():
     return jsonify({'responses': response_texts})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    print("WARNING: This Flask app conflicts with the main FastAPI app.")
+    print("Use 'python app.py' to run the main application instead.")
+    print("If you need to run this for database setup, modify the port.")
+    # app.run(host='0.0.0.0', port=5001)  # Use different port if needed
 
 
 

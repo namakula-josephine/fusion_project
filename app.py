@@ -358,30 +358,53 @@ async def query(
                 image_array = preprocess_image(image_path)
                 if image_array is None:
                     raise ValueError("Failed to preprocess image")
-                    
-                prediction = vision_model.predict(image_array, verbose=0)
-                predicted_class = class_names[np.argmax(prediction)]
-                confidence = float(np.max(prediction))
-                print(f"Prediction: {predicted_class} ({confidence:.2%})")
                 
-                # Create a brief, clean summary for the main answer (no duplication)
-                summary = f"Image analysis complete. See detailed results below."
+                # Make prediction with error handling
+                try:
+                    prediction = vision_model.predict(image_array, verbose=0)
+                    predicted_class = class_names[np.argmax(prediction)]
+                    confidence = float(np.max(prediction))
+                    print(f"🎯 Model Prediction: {predicted_class} ({confidence:.2%})")
+                except Exception as model_error:
+                    print(f"🔴 Model Prediction Error: {str(model_error)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Model prediction failed: {str(model_error)}"
+                    )
                 
-                # Get detailed explanation about the diagnosis
+                # Create a very brief summary for the main answer (no duplication)
+                summary = f"Analysis complete: **{predicted_class}** detected with {confidence:.2%} confidence."
+                
+                # Get focused explanation about the specific diagnosis with error handling
                 explanation_query = (
-                    f"Provide a detailed explanation of {predicted_class} in potato plants. "
-                    f"Cover what this condition is, what causes it, typical symptoms, and how it affects the plant. "
-                    f"Keep it informative and well-structured with proper formatting."
+                    f"Explain what **{predicted_class}** is in potato plants. Include: "
+                    f"1. What causes this condition "
+                    f"2. Key identifying symptoms "
+                    f"3. How it affects plant health "
+                    f"Keep it concise, informative and well-formatted with bullet points."
                 )
-                explanation = await get_ai_response(explanation_query)
+                try:
+                    explanation = await get_ai_response(explanation_query)
+                    print(f"✅ AI Explanation generated successfully")
+                except HTTPException as ai_error:
+                    print(f"🔴 AI Explanation Error: {str(ai_error.detail)}")
+                    raise ai_error
 
-                # Get comprehensive treatment plans
+                # Get actionable treatment plans (separate from explanation) with error handling
                 treatment_query = (
-                    f"Provide a comprehensive treatment plan for {predicted_class} in potato plants. "
-                    f"Include immediate actions, preventive measures, chemical treatments if needed, and long-term management strategies. "
-                    f"Format with clear bullet points and actionable steps."
+                    f"Provide specific **treatment steps** for {predicted_class} in potato plants: "
+                    f"1. Immediate actions needed "
+                    f"2. Recommended fungicides or treatments "
+                    f"3. Prevention measures "
+                    f"4. Long-term management "
+                    f"Format as clear, actionable bullet points."
                 )
-                treatment_plans = await get_ai_response(treatment_query)
+                try:
+                    treatment_plans = await get_ai_response(treatment_query)
+                    print(f"✅ AI Treatment plan generated successfully")
+                except HTTPException as ai_error:
+                    print(f"🔴 AI Treatment Plan Error: {str(ai_error.detail)}")
+                    raise ai_error
                 
                 # Save to chat if chat_id provided
                 if chat_id:
@@ -441,7 +464,12 @@ async def query(
         
         else:
             print(f"Processing text query: {question}")
-            answer = await get_ai_response(question)
+            try:
+                answer = await get_ai_response(question)
+                print(f"✅ AI response generated successfully for text query")
+            except HTTPException as ai_error:
+                print(f"🔴 AI Text Query Error: {str(ai_error.detail)}")
+                raise ai_error
             
             # Save to chat if chat_id provided
             if chat_id:
@@ -509,7 +537,12 @@ def preprocess_image(image_path, img_size=(224, 224)):
 
 async def get_ai_response(query: str) -> str:
     if not openai_client:
-        return get_fallback_ai_response(query)
+        error_msg = "OpenAI API client not configured. Please check API key and configuration."
+        print(f"🔴 AI Response Error: {error_msg}")
+        raise HTTPException(
+            status_code=500,
+            detail="AI service unavailable - OpenAI API not configured"
+        )
         
     try:
         # Use OpenAI v0.27.x API structure - Completion.create for v0.27.x
@@ -534,161 +567,19 @@ Response:""",
         )
         return response.choices[0].text.strip()
     except Exception as e:
-        print(f"OpenAI API error: {str(e)}")
-        return get_fallback_ai_response(query)
-
-def get_fallback_ai_response(query: str) -> str:
-    """Provide structured fallback responses when AI is unavailable"""
-    query_lower = query.lower()
-    
-    if "early blight" in query_lower:
-        if "treatment" in query_lower or "plan" in query_lower:
-            return """**Treatment Plan for Early Blight:**
-
-**Immediate Actions:**
-- Remove and destroy affected leaves immediately
-- Improve air circulation around plants
-- Apply copper-based fungicide spray
-
-**Preventive Measures:**
-- Water at soil level, avoid overhead watering
-- Mulch around plants to prevent soil splash
-- Ensure proper plant spacing for air circulation
-
-**Chemical Treatments:**
-- Copper sulfate fungicide (weekly applications)
-- Chlorothalonil-based fungicides
-- Mancozeb for severe infections
-
-**Long-term Management:**
-- Crop rotation with non-solanaceous plants
-- Choose resistant potato varieties
-- Regular monitoring and early intervention"""
-        else:
-            return """**Early Blight** (*Alternaria solani*)
-
-**What it is:**
-Early blight is a common fungal disease affecting potato plants, causing significant yield losses if left untreated.
-
-**Causes:**
-- Fungal pathogen *Alternaria solani*
-- Warm, humid weather conditions (75-85°F)
-- Poor air circulation
-- Overhead watering creating leaf wetness
-
-**Typical Symptoms:**
-- **Dark, concentric ring spots** on lower leaves
-- **Yellowing and browning** of affected leaves
-- **Stem lesions** with dark, sunken areas
-- **Premature leaf drop** in severe cases
-
-**Plant Impact:**
-- Reduced photosynthesis due to leaf loss
-- Weakened plant vigor and growth
-- Decreased tuber yield and quality
-- Increased susceptibility to other diseases"""
-    
-    elif "late blight" in query_lower:
-        if "treatment" in query_lower or "plan" in query_lower:
-            return """**Treatment Plan for Late Blight:**
-
-**Immediate Actions:**
-- Remove and destroy all affected plant parts immediately
-- Apply protective fungicide spray within 24 hours
-- Improve drainage around plants
-
-**Preventive Measures:**
-- Monitor weather for cool, wet conditions
-- Ensure excellent air circulation
-- Avoid overhead irrigation
-- Remove volunteer potatoes and tomatoes
-
-**Chemical Treatments:**
-- Copper-based fungicides (preventive)
-- Metalaxyl-based systemic fungicides
-- Propamocarb for active infections
-
-**Long-term Management:**
-- Use certified disease-free seed potatoes
-- Plant resistant varieties when available
-- Implement strict crop rotation (3-4 years)
-- Regular field scouting and monitoring"""
-        else:
-            return """**Late Blight** (*Phytophthora infestans*)
-
-**What it is:**
-Late blight is a serious disease caused by an oomycete pathogen, historically responsible for the Irish Potato Famine.
-
-**Causes:**
-- Oomycete pathogen *Phytophthora infestans*
-- Cool, wet weather conditions (60-70°F)
-- High relative humidity (>90%)
-- Poor drainage and air circulation
-
-**Typical Symptoms:**
-- **Water-soaked spots** on leaves and stems
-- **White, fuzzy growth** on leaf undersides
-- **Rapid blackening** and death of foliage
-- **Dark, sunken lesions** on tubers
-
-**Plant Impact:**
-- Extremely rapid disease progression
-- Complete plant collapse within days
-- Severe tuber rot in storage
-- High potential for total crop loss"""
-    
-    elif "healthy" in query_lower:
-        return """**Healthy Potato Plants**
-
-**Characteristics:**
-- **Vigorous green foliage** with no discoloration
-- **Strong, upright growth** habit
-- **No visible disease symptoms** or pest damage
-- **Good flower and tuber development**
-
-**Maintenance Tips:**
-- Continue current care practices
-- Monitor regularly for early disease signs
-- Maintain consistent watering schedule
-- Ensure adequate nutrition
-
-**Preventive Care:**
-- **Weekly inspections** for disease symptoms
-- **Proper spacing** for air circulation
-- **Mulching** to retain moisture and suppress weeds
-- **Balanced fertilization** program
-
-**Long-term Health:**
-- Implement crop rotation practices
-- Choose disease-resistant varieties
-- Maintain good garden hygiene
-- Document successful growing practices"""
-    
-    else:
-        return f"""**Agricultural Consultation Needed**
-
-I'm currently unable to connect to the AI service to provide detailed information about: *{query}*
-
-**Recommended Actions:**
-- Consult with local agricultural extension office
-- Contact certified crop advisors
-- Review agricultural publications and resources
-- Consider soil and plant tissue testing
-
-**General Plant Health Tips:**
-- Maintain proper watering practices
-- Ensure adequate nutrition
-- Monitor for pest and disease symptoms
-- Implement integrated pest management strategies
-
-For specific disease identification and treatment, please consult with agricultural professionals in your area."""
+        error_msg = f"OpenAI API error: {str(e)}"
+        print(f"🔴 AI Response Error: {error_msg}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI service error: {str(e)}"
+        )
 
 @app.get("/")
 async def health_check():
     return {
         "status": "healthy",
         "service": "Potato Plant Disease Detection API",
-        "model_status": "loaded" if vision_model else "fallback_mode",
+        "model_status": "loaded" if vision_model else "error",
         "ai_service": "available" if openai_client else "unavailable"
     }
 
