@@ -55,12 +55,10 @@ app.add_middleware(
         "http://172.24.176.1:5173",
         # Production frontend URL
         "https://potato-disease-clinic.onrender.com",  # Your actual frontend deployment
-        # Other common deployment URLs (fallback)
-        "https://potato-plant-aid-dashboard.vercel.app",  # Vercel deployment
-        "https://potato-plant-aid-dashboard.netlify.app",  # Netlify deployment
-        "https://potato-plant-aid-dashboard.onrender.com",  # Render deployment
+        # Allow all HTTPS origins for production flexibility
+        "*",  # Allow all origins (temporary fix for production)
     ],
-    allow_credentials=True,
+    allow_credentials=False,  # Set to False when using wildcard origins
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],  # Allow all headers for flexibility
     expose_headers=["*"],
@@ -580,7 +578,20 @@ async def health_check():
         "status": "healthy",
         "service": "Potato Plant Disease Detection API",
         "model_status": "loaded" if vision_model else "error",
-        "ai_service": "available" if openai_client else "unavailable"
+        "ai_service": "available" if openai_client else "unavailable",
+        "cors": "configured"
+    }
+
+@app.get("/health")
+async def detailed_health_check():
+    return {
+        "status": "healthy",
+        "timestamp": "2025-06-10",
+        "service": "Potato Plant Disease Detection API",
+        "model_status": "loaded" if vision_model else "error",
+        "ai_service": "available" if openai_client else "unavailable",
+        "cors_origins": "wildcard_enabled",
+        "auth": "basic_auth_required"
     }
 
 # Remove manual uvicorn run for deployment
